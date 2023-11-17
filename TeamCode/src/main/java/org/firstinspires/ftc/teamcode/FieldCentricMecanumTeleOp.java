@@ -47,10 +47,26 @@ public class FieldCentricMecanumTeleOp extends LinearOpMode {
 
         if (isStopRequested()) return;
 
+        double Kp = 5;
+        double Ki = 3;
+        double Kd = 3;
+
+        double reference = 0;
+
+        double integralSum = 0;
+
+        double lastError = 0;
+
+        double out = 0;
+
+// Elapsed timer class from SDK, please use it, it's epic
+        ElapsedTime timer = new ElapsedTime();
+
         while (opModeIsActive()) {
             double y = -gamepad1.left_stick_y; // Remember, Y stick value is reversed
             double x = gamepad1.left_stick_x;
-            double rx = -gamepad1.right_stick_x;
+            double rx = 0;
+            double r = Math.atan2(gamepad1.right_stick_x, gamepad1.right_stick_y);
 
             // This button choice was made so that it is hard to hit on accident,
             // it can be freely changed based on preference.
@@ -61,6 +77,24 @@ public class FieldCentricMecanumTeleOp extends LinearOpMode {
 
             double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
 
+            if(botHeading != r){
+                // calculate the error
+                double error = reference - botHeading;
+
+                // rate of change of the error
+                double derivative = (error - lastError) / timer.seconds();
+
+                // sum of all error over time
+                integralSum = integralSum + (error * timer.seconds());
+
+                out = (Kp * error) + (Ki * integralSum) + (Kd * derivative);
+
+                lastError = error;
+
+                // reset the timer for next time
+                timer.reset();
+            }
+
             // Rotate the movement direction counter to the bot's rotation
             double rotX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
             double rotY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
@@ -70,11 +104,11 @@ public class FieldCentricMecanumTeleOp extends LinearOpMode {
             // Denominator is the largest motor power (absolute value) or 1
             // This ensures all the powers maintain the same ratio,
             // but only if at least one is out of the range [-1, 1]
-            double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(rx), 1);
-            double frontLeftPower = (rotY + rotX + rx) / denominator;
-            double backLeftPower = (rotY - rotX + rx) / denominator;
-            double frontRightPower = (rotY - rotX - rx) / denominator;
-            double backRightPower = (rotY + rotX - rx) / denominator;
+            double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(out), 1);
+            double frontLeftPower = (rotY + rotX + out) / denominator;
+            double backLeftPower = (rotY - rotX + out) / denominator;
+            double frontRightPower = (rotY - rotX - out) / denominator;
+            double backRightPower = (rotY + rotX - out) / denominator;
 
             frontLeftMotor.setPower(frontLeftPower);
             backLeftMotor.setPower(backLeftPower);
@@ -82,7 +116,9 @@ public class FieldCentricMecanumTeleOp extends LinearOpMode {
             backRightMotor.setPower(backRightPower);
 
             telemetry.addData("Status", "Run Time: " + runtime.toString());
-            telemetry.addData("Status", "Angle: "+botHeading);
+            telemetry.addData("Status", "Angle: "+((botHeading*180)/Math.PI));
+            telemetry.addData("Status", "Right Stick: "+((r*180)/Math.PI));
+            telemetry.addData("Status", "Error: "+((out*180)/Math.PI));
             telemetry.update();
         }
     }
